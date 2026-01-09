@@ -12,10 +12,10 @@ section = st.sidebar.radio(
         "EDA",
         "Manual Visualizations",
         "Analytics",
+        "Manual Analytics",
         "Groq AI Visualization"
     ]
 )
-
 
 st.title("DataTalk – Conversational Data Analysis System")
 
@@ -32,7 +32,7 @@ from groq import Groq
 import os
 
 client = Groq(
-    api_key="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"
+    api_key="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"
 )
 
 def get_visualization_intent(question, columns):
@@ -151,17 +151,122 @@ if uploaded_file is not None:
 
     elif section == "EDA":
 
-        st.subheader("Exploratory Data Analysis (EDA)")
+        st.subheader("Column-wise Analysis")
 
-        st.write("Summary Statistics")
-        st.write(df.describe())
+        numeric_cols = df.select_dtypes(include="number").columns.tolist()
+        categorical_cols = df.select_dtypes(include="object").columns.tolist()
 
-        st.write("Missing Values Report")
-        st.write(df.isnull().sum())
+        if numeric_cols:
+            st.write("Numeric Columns Summary")
+            for col in numeric_cols:
+                st.write(f"🔹 {col}")
+                st.write({
+                    "Mean": df[col].mean(),
+                    "Median": df[col].median(),
+                    "Min": df[col].min(),
+                    "Max": df[col].max(),
+                    "Missing Values": df[col].isnull().sum()
+                })
+
+        if categorical_cols:
+            st.write("Categorical Columns Summary")
+            for col in categorical_cols:
+                st.write(f"🔹 {col}")
+                st.write(df[col].value_counts().head(5))
+    
+    elif section == "Manual Analytics":
+        st.subheader("Manual Data Analytics")
+        numeric_cols = df.select_dtypes(include="number").columns.tolist()
+        categorical_cols = df.select_dtypes(include="object").columns.tolist()
+
+        analysis_type = st.selectbox(
+        "Select Analysis",
+        [
+            "Mean",
+            "Sum",
+            "Min",
+            "Max",
+            "Group By Analysis"
+        ]
+        )
+
+        if analysis_type in ["Mean", "Sum", "Min", "Max"] and numeric_cols:
+            col = st.selectbox("Select numeric column", numeric_cols)
+
+            if analysis_type == "Mean":
+                st.success(f"Mean of {col}: {df[col].mean()}")
+
+            elif analysis_type == "Sum":
+                st.success(f"Sum of {col}: {df[col].sum()}")
+
+            elif analysis_type == "Min":
+                st.success(f"Minimum of {col}: {df[col].min()}")
+
+            elif analysis_type == "Max":
+                st.success(f"Maximum of {col}: {df[col].max()}")
+
+        elif analysis_type == "Group By Analysis":
+            if categorical_cols and numeric_cols:
+                cat_col = st.selectbox("Select category column", categorical_cols)
+                num_col = st.selectbox("Select numeric column", numeric_cols)
+
+                grouped = df.groupby(cat_col)[num_col].mean().reset_index()
+                st.write("Grouped Result (Mean):")
+                st.dataframe(grouped)
+            else:
+                st.warning("Not enough categorical or numeric columns")
+
+            st.subheader("Trend Analysis (Time-based)")
+
+            date_cols = df.select_dtypes(include=["datetime", "datetime64[ns]"]).columns.tolist()
+            for col in df.select_dtypes(include="object").columns:
+                try:
+                    df[col] = pd.to_datetime(df[col])
+                    date_cols.append(col)
+                except:
+                    pass
+
+            if date_cols:
+                date_col = st.selectbox("Select Date Column", list(set(date_cols)))
+
+                numeric_cols = df.select_dtypes(include="number").columns.tolist()
+
+                if numeric_cols:
+                    value_col = st.selectbox("Select Numeric Column", numeric_cols)
+
+                    df_sorted = df.sort_values(by=date_col)
+
+                    fig, ax = plt.subplots()
+                    ax.plot(df_sorted[date_col], df_sorted[value_col])
+                    ax.set_title(f"Trend of {value_col} over time")
+                    ax.set_xlabel("Date")
+                    ax.set_ylabel(value_col)
+
+                    st.pyplot(fig)
+                else:
+                    st.warning("No numeric columns available")
+            else:
+                st.info("No date columns detected")
+
+            st.subheader("Outlier Detection (IQR Method)")
+
+            numeric_cols = df.select_dtypes(include="number").columns.tolist()
+
+            for col in numeric_cols:
+                Q1 = df[col].quantile(0.25)
+                Q3 = df[col].quantile(0.75)
+                IQR = Q3 - Q1
+
+                outliers = df[(df[col] < Q1 - 1.5 * IQR) | (df[col] > Q3 + 1.5 * IQR)]
+
+                st.write(f"{col}: {len(outliers)} potential outliers")
 
     elif section == "Manual Visualizations":
 
         st.subheader("Manual Visualizations")
+
+        numeric_cols = df.select_dtypes(include="number").columns.tolist()
+        categorical_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
 
         numeric_df = df.select_dtypes(include="number")
 
@@ -180,23 +285,48 @@ if uploaded_file is not None:
 
         else:
             st.warning("No numeric columns available for correlation analysis.")
-
-        st.subheader("Histogram (Numeric Columns)")
+        
+        st.subheader("Advanced Histogram Analysis")
 
         num_cols = df.select_dtypes(include="number").columns.tolist()
 
         if num_cols:
-            col = st.selectbox("Select numeric column", num_cols)
+            col = st.selectbox("Select numeric column", num_cols, key="adv_hist_col")
+            bins = st.slider("Number of bins", min_value=5, max_value=50, value=20)
 
             fig, ax = plt.subplots()
-            ax.hist(df[col], bins=20)
+            ax.hist(df[col], bins=bins)
             ax.set_title(f"Distribution of {col}")
+            ax.set_xlabel(col)
+            ax.set_ylabel("Frequency")
 
             st.pyplot(fig)
+
+            st.write("Mean:", df[col].mean())
+            st.write("Median:", df[col].median())
+            st.write("Standard Deviation:", df[col].std())
         else:
-            st.warning("No numeric columns available")
-        
-        st.subheader("Bar Chart (Categorical Columns)")
+            st.warning("No numeric columns available.")
+
+        st.subheader("Scatter Plot (Relationship Analysis)")
+        numeric_cols = df.select_dtypes(include="number").columns.tolist()
+
+        if len(numeric_cols) >= 2:
+            x_col = st.selectbox("X-axis", numeric_cols, key="scatter_x")
+            y_col = st.selectbox("Y-axis", numeric_cols, key="scatter_y")
+
+            fig, ax = plt.subplots()
+            ax.scatter(df[x_col], df[y_col])
+            ax.set_xlabel(x_col)
+            ax.set_ylabel(y_col)
+            ax.set_title(f"{y_col} vs {x_col}")
+
+            st.pyplot(fig)
+
+            st.write("Correlation:", df[[x_col, y_col]].corr().iloc[0,1])
+        else:
+            st.warning("Need at least two numeric columns")
+
 
         if df is not None:
 
@@ -217,6 +347,27 @@ if uploaded_file is not None:
                 ax.tick_params(axis='x', rotation=45)
 
                 st.pyplot(fig)
+
+        st.subheader("Box Plot (Outlier Detection)")
+
+        num_cols = df.select_dtypes(include="number").columns.tolist()
+
+        if num_cols:
+            col = st.selectbox("Select numeric column", num_cols, key="boxplot")
+
+            fig, ax = plt.subplots()
+            ax.boxplot(df[col].dropna(), vert=True)
+            ax.set_title(f"Box Plot of {col}")
+            ax.set_ylabel(col)
+
+            st.pyplot(fig)
+
+            st.write("Q1:", df[col].quantile(0.25))
+            st.write("Median:", df[col].median())
+            st.write("Q3:", df[col].quantile(0.75))
+        else:
+            st.warning("No numeric columns available")
+
         
         st.subheader("Line Chart (Date Columns)")
 
@@ -236,64 +387,57 @@ if uploaded_file is not None:
             st.info("No datetime columns detected")
 
     elif section == "Analytics":
-
-        st.subheader("Basic Analytics")
-
-        analysis_type = st.selectbox(
-        "Select Analysis Type",
-        [
-            "Average of a column",
-            "Sum of a column",
-            "Maximum of a column",
-            "Group by (Category → Numeric)"
-        ],
-        key="analysis_type"
-        )
+        st.subheader("Descriptive Analytics")
 
         numeric_cols = df.select_dtypes(include="number").columns.tolist()
-        categorical_cols = df.select_dtypes(include="object").columns.tolist()
+        categorical_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
 
-        if analysis_type == "Average of a column" and numeric_cols:
-            col = st.selectbox(
-            "Select numeric column",
-            numeric_cols,
-            key="avg_col"
-            )
-            st.write("Average:", df[col].mean())
-
-        elif analysis_type == "Sum of a column" and numeric_cols:
-            col = st.selectbox(
-            "Select numeric column",
-            numeric_cols,
-            key="sum_col"
-            )
-            st.write("Sum:", df[col].sum())
-
-        elif analysis_type == "Maximum of a column" and numeric_cols:
-            col = st.selectbox(
-            "Select numeric column",
-            numeric_cols,
-            key="max_col"
-            )
-            st.write("Maximum:", df[col].max())
-
-        if len(categorical_cols) == 0 or len(numeric_cols) == 0:
-            st.warning("Not enough categorical or numeric columns for groupby.")
-        else:
-            cat_col = st.selectbox(
-                "Select category column",
-                categorical_cols,
-                key="group_cat"
-            )
-
-            num_col = st.selectbox(
-                "Select numeric column",
+        if numeric_cols:
+            selected_col = st.selectbox(
+                "Select a numeric column for analysis",
                 numeric_cols,
-                key="group_num"
+                key="desc_col"
             )
 
-            result = df.groupby(cat_col)[num_col].mean().reset_index()
-            st.write(result)
+            col_data = df[selected_col]
+
+            st.write("### Key Statistics")
+            st.write({
+                "Mean": col_data.mean(),
+                "Median": col_data.median(),
+                "Minimum": col_data.min(),
+                "Maximum": col_data.max(),
+                "Standard Deviation": col_data.std(),
+                "Variance": col_data.var(),
+                "Count": col_data.count()
+            })
+        else:
+            st.warning("No numeric columns available for descriptive analytics.")
+
+        st.subheader("Top-N Analysis")
+
+        n = st.slider("Select N", 1, 20, 5)
+        col = st.selectbox("Select column", df.columns)
+
+        top_n = df[col].value_counts().head(n)
+        st.dataframe(top_n)
+
+        st.subheader("Group By Analysis")
+
+        cat_col = st.selectbox("Select category column", categorical_cols)
+        num_col = st.selectbox("Select numeric column", numeric_cols)
+        operation = st.selectbox("Operation", ["Mean", "Sum", "Max", "Min"])
+
+        if operation == "Mean":
+            result = df.groupby(cat_col)[num_col].mean()
+        elif operation == "Sum":
+            result = df.groupby(cat_col)[num_col].sum()
+        elif operation == "Max":
+            result = df.groupby(cat_col)[num_col].max()
+        else:
+            result = df.groupby(cat_col)[num_col].min()
+
+        st.dataframe(result.reset_index())
     
 
     elif section == "Groq AI Visualization":
@@ -367,5 +511,3 @@ if uploaded_file is not None:
 
             else:
                 st.warning("Unable to generate visualization from Groq response.")
-
-
