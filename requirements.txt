@@ -3,3 +3,4 @@ pandas
 matplotlib
 groq
 openpyxl
+python-dotenv
